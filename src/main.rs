@@ -2,7 +2,7 @@ use std::error::Error;
 use std::io;
 use std::process;
 
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg};
 
 fn example() -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
@@ -22,32 +22,16 @@ fn main() {
         .author("SHIKUMA Naokata <snaokata@gmail.com>") // 作者情報
         .about("Tablec is a table converter tool.") // このアプリについて
         .arg(
-            Arg::with_name("pa") // 位置引数を定義
-                .help("sample positional argument") // ヘルプメッセージ
-                .required(true), // この引数は必須であることを定義
+            Arg::with_name("FILE") // 位置引数を定義
+                .help("input file") // ヘルプメッセージ
+                .required(false), // この引数は必須であることを定義
         )
         .arg(
-            Arg::with_name("flg") // フラグを定義
-                .help("sample flag") // ヘルプメッセージ
-                .short("f") // ショートコマンド
-                .long("flag"), // ロングコマンド
-        )
-        .arg(
-            Arg::with_name("opt") // オプションを定義
-                .help("sample option") // ヘルプメッセージ
-                .short("o") // ショートコマンド
-                .long("opt") // ロングコマンド
+            Arg::with_name("INPUT_FORMAT") // オプションを定義
+                .help("input format") // ヘルプメッセージ
+                .short("i") // ショートコマンド
+                .long("input") // ロングコマンド
                 .takes_value(true), // 値を持つことを定義
-        )
-        .subcommand(
-            SubCommand::with_name("sub") // サブコマンドを定義
-                .about("sample subcommand") // このサブコマンドについて
-                .arg(
-                    Arg::with_name("subflg") // フラグを定義
-                        .help("sample flag by sub") // ヘルプメッセージ
-                        .short("f") // ショートコマンド
-                        .long("flag"), // ロングコマンド
-                ),
         );
 
     let matches = app.get_matches();
