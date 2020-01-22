@@ -18,20 +18,30 @@ fn example() -> Result<(), Box<dyn Error>> {
 
 fn main() {
     let app = App::new("tablec")
-        .version("0.1.0") // バージョン情報
-        .author("SHIKUMA Naokata <snaokata@gmail.com>") // 作者情報
-        .about("Tablec is a table converter tool.") // このアプリについて
+        .version("0.1.0")
+        .author("SHIKUMA Naokata <snaokata@gmail.com>")
+        .about("Tablec is a table converter tool.")
+        .arg(Arg::with_name("FILE").help("input file").required(false))
         .arg(
-            Arg::with_name("FILE") // 位置引数を定義
-                .help("input file") // ヘルプメッセージ
-                .required(false), // この引数は必須であることを定義
+            Arg::with_name("INPUT_FORMAT")
+                .help("input format")
+                .short("i")
+                .long("input")
+                .takes_value(true),
         )
         .arg(
-            Arg::with_name("INPUT_FORMAT") // オプションを定義
-                .help("input format") // ヘルプメッセージ
-                .short("i") // ショートコマンド
-                .long("input") // ロングコマンド
-                .takes_value(true), // 値を持つことを定義
+            Arg::with_name("OUTPUT_FORMAT")
+                .help("output format")
+                .short("o")
+                .long("output")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("OUTPUT_FILE")
+                .help("output file")
+                .short("f")
+                .long("file")
+                .takes_value(true),
         );
 
     let matches = app.get_matches();
