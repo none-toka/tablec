@@ -1,12 +1,23 @@
 use std::error::Error;
+use std::fs::File;
 use std::io;
+use std::io::Read;
 use std::process;
 
 use clap::{App, Arg};
 
-fn example() -> Result<(), Box<dyn Error>> {
+fn reader(file: &Option<String>) -> Box<dyn Read> {
+    file.as_ref()
+        .map(|f| {
+            Box::new(File::open(&f).expect(&format!("Cannot open file to read: {}", &f)))
+                as Box<dyn Read>
+        })
+        .unwrap_or_else(|| Box::new(io::stdin()) as Box<dyn Read>)
+}
+
+fn execute(params: &ArgParameters) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
-    let mut rdr = csv::Reader::from_reader(io::stdin());
+    let mut rdr = csv::Reader::from_reader(reader(&params.input_file));
     for result in rdr.records() {
         // The iterator yields Result<StringRecord, Error>, so we check the
         // error here.
@@ -78,10 +89,8 @@ fn parse() -> ArgParameters {
     }
 }
 fn main() {
-    let matches = parse();
-    println!("{:?}", matches);
-    if let Err(err) = example() {
-        println!("error running example: {}", err);
+    if let Err(err) = execute(&parse()) {
+        println!("error running execute: {}", err);
         process::exit(1);
     }
 }
