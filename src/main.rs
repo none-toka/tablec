@@ -15,9 +15,18 @@ fn reader(file: &Option<String>) -> Box<dyn Read> {
         .unwrap_or_else(|| Box::new(io::stdin()) as Box<dyn Read>)
 }
 
+fn table_reader(input_format: &str) -> csv::ReaderBuilder {
+    let mut ret = csv::ReaderBuilder::new();
+    match input_format {
+        "tsv" => ret.delimiter(b'\t'),
+        _ => ret.delimiter(b','),
+    };
+    ret
+}
+
 fn execute(params: &ArgParameters) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
-    let mut rdr = csv::Reader::from_reader(reader(&params.input_file));
+    let mut rdr = table_reader(&params.input_format).from_reader(reader(&params.input_file));
     for result in rdr.records() {
         // The iterator yields Result<StringRecord, Error>, so we check the
         // error here.
