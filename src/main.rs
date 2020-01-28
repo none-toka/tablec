@@ -1,18 +1,20 @@
-use std::error::Error;
 use std::fs::File;
 use std::io;
 use std::io::Read;
 use std::process;
 
+use anyhow::{Context, Result};
+
 use clap::{App, Arg};
 
-fn reader(file: &Option<String>) -> Box<dyn Read> {
-    file.as_ref()
-        .map(|f| {
-            Box::new(File::open(&f).expect(&format!("Cannot open file to read: {}", &f)))
-                as Box<dyn Read>
-        })
-        .unwrap_or_else(|| Box::new(io::stdin()) as Box<dyn Read>)
+fn reader(file: &Option<String>) -> Result<Box<dyn Read>> {
+    match file {
+        Some(f) => {
+            let r = File::open(&f).with_context(|| format!("Cannot open file to read: {}", &f))?;
+            Ok(Box::new(r))
+        }
+        None => Ok(Box::new(io::stdin())),
+    }
 }
 
 fn table_reader(input_format: &str) -> csv::ReaderBuilder {
@@ -24,9 +26,10 @@ fn table_reader(input_format: &str) -> csv::ReaderBuilder {
     ret
 }
 
-fn execute(params: &ArgParameters) -> Result<(), Box<dyn Error>> {
+fn execute(params: &ArgParameters) -> Result<()> {
     // Build the CSV reader and iterate over each record.
-    let mut rdr = table_reader(&params.input_format).from_reader(reader(&params.input_file));
+    let r = reader(&params.input_file)?;
+    let mut rdr = table_reader(&params.input_format).from_reader(r);
     for result in rdr.records() {
         // The iterator yields Result<StringRecord, Error>, so we check the
         // error here.
