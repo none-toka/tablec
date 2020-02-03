@@ -26,10 +26,7 @@ fn table_reader(input_format: &str) -> csv::ReaderBuilder {
     ret
 }
 
-fn execute(params: &ArgParameters) -> Result<()> {
-    // Build the CSV reader and iterate over each record.
-    let r = reader(&params.input_file)?;
-    let mut rdr = table_reader(&params.input_format).from_reader(r);
+fn write(rdr: &mut csv::Reader<std::boxed::Box<(dyn std::io::Read)>>) -> Result<()> {
     let headers = rdr.headers()?;
     println!("{:?}", headers);
     for result in rdr.records() {
@@ -39,6 +36,13 @@ fn execute(params: &ArgParameters) -> Result<()> {
         println!("{:?}", record);
     }
     Ok(())
+}
+
+fn execute(params: &ArgParameters) -> Result<()> {
+    // Build the CSV reader and iterate over each record.
+    let r = reader(&params.input_file)?;
+    let mut rdr = table_reader(&params.input_format).from_reader(r);
+    write(&mut rdr)
 }
 
 #[derive(Debug)]
