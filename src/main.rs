@@ -30,6 +30,8 @@ fn execute(params: &ArgParameters) -> Result<()> {
     // Build the CSV reader and iterate over each record.
     let r = reader(&params.input_file)?;
     let mut rdr = table_reader(&params.input_format).from_reader(r);
+    let headers = rdr.headers()?;
+    println!("{:?}", headers);
     for result in rdr.records() {
         // The iterator yields Result<StringRecord, Error>, so we check the
         // error here.
@@ -100,6 +102,7 @@ fn parse() -> ArgParameters {
             .expect(&format!("Not given: {}", OUTPUT_FORMAT)),
     }
 }
+
 fn main() {
     if let Err(err) = execute(&parse()) {
         println!("error running execute: {}", err);
