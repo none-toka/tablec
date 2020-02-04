@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io;
 use std::io::Read;
+use std::io::Write;
 use std::process;
 
 use anyhow::{Context, Result};
@@ -17,23 +18,39 @@ fn reader(file: &Option<String>) -> Result<Box<dyn Read>> {
     }
 }
 
+const TSV_FORMAT: &str = "tsv";
+const TSV_DELIMITER: u8 = b'\t';
+const CSV_DELIMITER: u8 = b',';
+
 fn table_reader(input_format: &str) -> csv::ReaderBuilder {
     let mut ret = csv::ReaderBuilder::new();
     match input_format {
-        "tsv" => ret.delimiter(b'\t'),
-        _ => ret.delimiter(b','),
+        TSV_FORMAT => ret.delimiter(TSV_DELIMITER),
+        _ => ret.delimiter(CSV_DELIMITER),
     };
     ret
 }
 
-fn write(rdr: &mut csv::Reader<std::boxed::Box<(dyn std::io::Read)>>) -> Result<()> {
+fn table_writer(output_format: &str) -> csv::WriterBuilder {
+    let mut ret = csv::WriterBuilder::new();
+    match output_format {
+        TSV_FORMAT => ret.delimiter(TSV_DELIMITER),
+        _ => ret.delimiter(CSV_DELIMITER),
+    };
+    ret
+}
+
+fn write(
+    rdr: &mut csv::Reader<std::boxed::Box<(dyn std::io::Read)>>,
+    wtr: &mut csv::Writer<std::boxed::Box<(dyn std::io::Write)>>,
+) -> Result<()> {
     let headers = rdr.headers()?;
-    println!("{:?}", headers);
+    wtr.write_record(headers)?;
     for result in rdr.records() {
         // The iterator yields Result<StringRecord, Error>, so we check the
         // error here.
         let record = result?;
-        println!("{:?}", record);
+        wtr.write_record(record.iter())?;
     }
     Ok(())
 }
@@ -42,7 +59,9 @@ fn execute(params: &ArgParameters) -> Result<()> {
     // Build the CSV reader and iterate over each record.
     let r = reader(&params.input_file)?;
     let mut rdr = table_reader(&params.input_format).from_reader(r);
-    write(&mut rdr)
+    let w: Box<dyn Write> = Box::new(io::stdout());
+    let mut wtr = table_writer(&params.output_format).from_writer(w);
+    write(&mut rdr, &mut wtr)
 }
 
 #[derive(Debug)]
