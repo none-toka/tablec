@@ -18,6 +18,17 @@ fn reader(file: &Option<String>) -> Result<Box<dyn Read>> {
     }
 }
 
+fn writer(file: &Option<String>) -> Result<Box<dyn Write>> {
+    match file {
+        Some(f) => {
+            let r =
+                File::create(&f).with_context(|| format!("Cannot open file to write: {}", &f))?;
+            Ok(Box::new(r))
+        }
+        None => Ok(Box::new(io::stdout())),
+    }
+}
+
 const TSV_FORMAT: &str = "tsv";
 const TSV_DELIMITER: u8 = b'\t';
 const CSV_DELIMITER: u8 = b',';
@@ -59,7 +70,7 @@ fn execute(params: &ArgParameters) -> Result<()> {
     // Build the CSV reader and iterate over each record.
     let r = reader(&params.input_file)?;
     let mut rdr = table_reader(&params.input_format).from_reader(r);
-    let w: Box<dyn Write> = Box::new(io::stdout());
+    let w = writer(&params.output_file)?;
     let mut wtr = table_writer(&params.output_format).from_writer(w);
     write(&mut rdr, &mut wtr)
 }
