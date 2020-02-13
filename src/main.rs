@@ -8,6 +8,9 @@ use anyhow::{Context, Result};
 
 use clap::{App, Arg};
 
+use serde::Deserialize;
+
+
 fn reader(file: &Option<String>) -> Result<Box<dyn Read>> {
     match file {
         Some(f) => {
@@ -54,6 +57,7 @@ fn table_writer(output_format: &str) -> csv::WriterBuilder {
 fn write(
     rdr: &mut csv::Reader<std::boxed::Box<(dyn std::io::Read)>>,
     wtr: &mut csv::Writer<std::boxed::Box<(dyn std::io::Write)>>,
+    conv: fn(csv::StringRecord) -> csv::StringRecord,
 ) -> Result<()> {
     let headers = rdr.headers()?;
     wtr.write_record(headers)?;
@@ -66,13 +70,28 @@ fn write(
     Ok(())
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(tag = "command")]
+enum ConvertCommand {
+    HSplit {
+        col: String,
+        sep: String,
+    },
+}
+
+// TODO return type shoud be iterator
+fn converter(command: &str) -> fn(csv::StringRecord) -> csv::StringRecord {
+    
+}
+
 fn execute(params: &ArgParameters) -> Result<()> {
     // Build the CSV reader and iterate over each record.
     let r = reader(&params.input_file)?;
     let mut rdr = table_reader(&params.input_format).from_reader(r);
+    let c = params.convert_command.map(|cmd| converter(&cmd)).unwrap_or(|x| x);
     let w = writer(&params.output_file)?;
     let mut wtr = table_writer(&params.output_format).from_writer(w);
-    write(&mut rdr, &mut wtr)
+    write(&mut rdr, &mut wtr, c)
 }
 
 #[derive(Debug)]
@@ -81,12 +100,14 @@ struct ArgParameters {
     input_format: String,
     output_file: Option<String>,
     output_format: String,
+    convert_command: Option<String>,
 }
 
 const INPUT_FILE: &str = "FILE";
 const INPUT_FORMAT: &str = "INPUT_FORMAT";
 const OUTPUT_FILE: &str = "OUTPUT_FILE";
 const OUTPUT_FORMAT: &str = "OUTPUT_FORMAT";
+const CONVERT_COMMAND: &str = "CONVERT_COMMAND";
 
 fn parse() -> ArgParameters {
     let app = App::new("tablec")
@@ -120,6 +141,13 @@ fn parse() -> ArgParameters {
                 .short("f")
                 .long("file")
                 .takes_value(true),
+        )
+        .arg(
+            Arg::with_name(CONVERT_COMMAND)
+                .help("convert command (TBD)")
+                .short("c")
+                .long("convert")
+                .takes_value(true),
         );
 
     let matched = app.get_matches();
@@ -134,6 +162,7 @@ fn parse() -> ArgParameters {
             .value_of(OUTPUT_FORMAT)
             .map(|s| s.to_string())
             .expect(&format!("Not given: {}", OUTPUT_FORMAT)),
+        convert_command: matched.value_of(CONVERT_COMMAND).map(|s| s.to_string()),
     }
 }
 
