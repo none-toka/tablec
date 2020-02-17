@@ -79,16 +79,29 @@ enum ConvertCommand {
     },
 }
 
-// TODO return type shoud be iterator
-fn converter(command: &str) -> fn(csv::StringRecord) -> csv::StringRecord {
-    
+fn converter_identity() -> Box<dyn Fn(csv::StringRecord) -> dyn Iterator<Item = csv::StringRecord>> {
+    box |x| std::iter::once(x)
+}
+
+fn converter_hsplit(col: &str, sep: &str) -> Box<dyn Fn(csv::StringRecord) -> dyn Iterator<Item = csv::StringRecord>> {
+
+}
+
+fn converter(command: &str) -> Result<Box<dyn Fn(csv::StringRecord) -> dyn Iterator<Item = csv::StringRecord>>> {
+    let cmd = serde_json::from_str(command)?;
+    match cmd {
+        ConvertCommand::HSplit { col: col, sep: sep } => Ok(converter_hsplit(&col, &sep))
+    }
 }
 
 fn execute(params: &ArgParameters) -> Result<()> {
     // Build the CSV reader and iterate over each record.
     let r = reader(&params.input_file)?;
     let mut rdr = table_reader(&params.input_format).from_reader(r);
-    let c = params.convert_command.map(|cmd| converter(&cmd)).unwrap_or(|x| x);
+    let c = match params.convert_command {
+        Some(cmd) => converter(&cmd)?,
+        None => converter_identity(),
+    };
     let w = writer(&params.output_file)?;
     let mut wtr = table_writer(&params.output_format).from_writer(w);
     write(&mut rdr, &mut wtr, c)
