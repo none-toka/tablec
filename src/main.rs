@@ -57,15 +57,15 @@ fn table_writer(output_format: &str) -> csv::WriterBuilder {
 fn write(
     rdr: &mut csv::Reader<std::boxed::Box<(dyn std::io::Read)>>,
     wtr: &mut csv::Writer<std::boxed::Box<(dyn std::io::Write)>>,
-    conv: fn(csv::StringRecord) -> csv::StringRecord,
+    conv: Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord>>,
 ) -> Result<()> {
     let headers = rdr.headers()?;
     wtr.write_record(headers)?;
     for result in rdr.records() {
-        // The iterator yields Result<StringRecord, Error>, so we check the
-        // error here.
         let record = result?;
-        wtr.write_record(record.iter())?;
+        for converted in conv(record) {
+            wtr.write_record(converted.iter())?;
+        }
     }
     Ok(())
 }
@@ -79,15 +79,17 @@ enum ConvertCommand {
     },
 }
 
-fn converter_identity() -> Box<dyn Fn(csv::StringRecord) -> dyn Iterator<Item = csv::StringRecord>> {
-    box |x| std::iter::once(x)
+fn converter_identity() -> Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord>> {
+    Box::new(|x| vec![x])
 }
 
-fn converter_hsplit(col: &str, sep: &str) -> Box<dyn Fn(csv::StringRecord) -> dyn Iterator<Item = csv::StringRecord>> {
-
+fn converter_hsplit(col: &str, sep: &str) -> Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord>> {
+    Box::new(|rec| {
+        vec![rec]
+    })
 }
 
-fn converter(command: &str) -> Result<Box<dyn Fn(csv::StringRecord) -> dyn Iterator<Item = csv::StringRecord>>> {
+fn converter(command: &str) -> Result<Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord>>> {
     let cmd = serde_json::from_str(command)?;
     match cmd {
         ConvertCommand::HSplit { col: col, sep: sep } => Ok(converter_hsplit(&col, &sep))
@@ -98,7 +100,7 @@ fn execute(params: &ArgParameters) -> Result<()> {
     // Build the CSV reader and iterate over each record.
     let r = reader(&params.input_file)?;
     let mut rdr = table_reader(&params.input_format).from_reader(r);
-    let c = match params.convert_command {
+    let c = match &params.convert_command {
         Some(cmd) => converter(&cmd)?,
         None => converter_identity(),
     };
