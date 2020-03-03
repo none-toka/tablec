@@ -72,7 +72,7 @@ fn write(
 #[derive(Deserialize, Debug)]
 #[serde(tag = "command")]
 enum ConvertCommand {
-    HSplit { col: String, sep: String },
+    HSplit { col: usize, sep: String },
 }
 
 fn converter_identity() -> Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord> + 'static> {
@@ -80,12 +80,10 @@ fn converter_identity() -> Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecor
 }
 
 fn converter_hsplit(
-    col: String,
+    col: usize,
     sep: String,
 ) -> Result<Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord>>> {
-    // TODO error message
-    let col_num_tmp: usize = col.parse()?;
-    let col_num = col_num_tmp - 1;
+    let col_num = col - 1;
     Ok(Box::new(move |rec| {
         let field = rec.get(col_num);
         if field == None {
