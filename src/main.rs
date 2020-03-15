@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 
 use clap::{App, Arg};
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 fn reader(file: &Option<String>) -> Result<Box<dyn Read>> {
     match file {
@@ -69,32 +69,110 @@ fn write(
     Ok(())
 }
 
+#[derive(Debug)]
+enum SplitPolicy {
+    Simple,
+    Suffix,
+    SuffixWithEnd,
+}
+
+impl Serialize for SplitPolicy {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(match *self {
+            SplitPolicy::Simple => "simple",
+            SplitPolicy::Suffix => "suffix",
+            SplitPolicy::SuffixWithEnd => "suffix-end",
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for SplitPolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            "simple" => SplitPolicy::Simple,
+            "suffix" => SplitPolicy::Suffix,
+            "suffix-end" => SplitPolicy::SuffixWithEnd,
+            &_ => SplitPolicy::Simple,
+        })
+    }
+}
+
+impl Default for SplitPolicy {
+    fn default() -> Self {
+        SplitPolicy::Simple
+    }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "untagged")]
+struct SplitCommand {
+    col: usize,
+    sep: String,
+    #[serde(default)]
+    policy: SplitPolicy,
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(tag = "command")]
 enum ConvertCommand {
-    HSplit { col: usize, sep: String },
+    Split(SplitCommand),
 }
 
 fn converter_identity() -> Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord> + 'static> {
     Box::new(|x| vec![x])
 }
 
-fn converter_hsplit(
-    col: usize,
-    sep: String,
+fn collect_suffix(s: String, sep: &str, end: bool) -> Vec<String> {
+    let mut ret = Vec::new();
+    for (pos, m) in s.match_indices(sep) {
+        if !end && (pos == 0 || pos + m.len() == s.len()) {
+            continue;
+        }
+        let end_pos = if end { pos + m.len() } else { pos };
+        if let Some(sub) = s.get(0..end_pos) {
+            ret.push(sub.to_string());
+        }
+    }
+    if !end || !s.ends_with(sep) {
+        ret.push(s);
+    }
+    ret
+}
+
+fn split(s: String, sep: &str, policy: &SplitPolicy) -> Vec<String> {
+    match policy {
+        SplitPolicy::Simple => s.split(&sep).map(|ss| ss.to_string()).collect(),
+        SplitPolicy::Suffix => collect_suffix(s, sep, false),
+        SplitPolicy::SuffixWithEnd => collect_suffix(s, sep, true),
+    }
+}
+
+fn converter_split(
+    split_cmd: SplitCommand,
 ) -> Result<Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord>>> {
-    let col_num = col - 1;
+    let col_num = split_cmd.col - 1;
     Ok(Box::new(move |rec| {
         let field = rec.get(col_num);
         if field == None {
             return vec![rec];
         }
-        let fields = field.unwrap().split(&sep);
+        let fields = split(
+            field.unwrap().to_string(),
+            &split_cmd.sep,
+            &split_cmd.policy,
+        );
         let mut ret = Vec::new();
         for v in fields {
             let mut r = csv::StringRecord::new();
             for (i, f) in rec.iter().enumerate() {
-                r.push_field(if i == col_num { v } else { f });
+                r.push_field(if i == col_num { &v } else { f });
             }
             ret.push(r);
         }
@@ -105,7 +183,7 @@ fn converter_hsplit(
 fn converter(command: String) -> Result<Box<dyn Fn(csv::StringRecord) -> Vec<csv::StringRecord>>> {
     let cmd = serde_json::from_str(&command)?;
     match cmd {
-        ConvertCommand::HSplit { col, sep } => converter_hsplit(col, sep),
+        ConvertCommand::Split(hs) => converter_split(hs),
     }
 }
 
@@ -172,7 +250,15 @@ fn parse() -> ArgParameters {
         )
         .arg(
             Arg::with_name(CONVERT_COMMAND)
-                .help("convert command (TBD)")
+                .help("convert command. A command is specified with JSON format:
+* Split a column:
+  * Usage: {\"command\": \"Split\", \"col\": COLUMN_NUMBER, \"sep\": SEPARATOR, \"policy\": POLICY}
+    * COLUMN_NUMBER: target column number.
+    * SEPARATOR: string to split a column, which does not mean the column delimitter of CSV/TSV.
+    * POLICY: ways to split a column with a separator:
+      * \"simple\" (default): With seperator \"/\", row \"A/B/C\" is split to 3 rows \"A\", \"B\", and \"C\".
+      * \"suffix\": With seperator \"/\", row \"A/B/C\" is split to 3 rows \"A\", \"A/B\", and \"A/B/C\".
+      * \"suffix-end\": With seperator \"/\", row \"A/B/C\" is split to 3 rows \"A/\", \"A/B/\", and \"A/B/C\".")
                 .short("c")
                 .long("convert")
                 .takes_value(true),
@@ -199,5 +285,62 @@ fn main() {
     if let Err(err) = execute(arg) {
         println!("error running execute: {}", err);
         process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_collect_suffix1() {
+        let s = "/dir1/dir2/file.txt";
+        let sep = "/";
+        assert_eq!(
+            collect_suffix(s.to_string(), sep, true),
+            vec!["/", "/dir1/", "/dir1/dir2/", "/dir1/dir2/file.txt"]
+        );
+        assert_eq!(
+            collect_suffix(s.to_string(), sep, false),
+            vec!["/dir1", "/dir1/dir2", "/dir1/dir2/file.txt"]
+        );
+    }
+
+    #[test]
+    fn test_collect_suffix2() {
+        let s = "/dir1/dir2/";
+        let sep = "/";
+        assert_eq!(
+            collect_suffix(s.to_string(), sep, true),
+            vec!["/", "/dir1/", "/dir1/dir2/"]
+        );
+        assert_eq!(
+            collect_suffix(s.to_string(), sep, false),
+            vec!["/dir1", "/dir1/dir2/"]
+        );
+    }
+
+    #[test]
+    fn test_collect_suffix3() {
+        let s = "/";
+        let sep = "/";
+        assert_eq!(collect_suffix(s.to_string(), sep, true), vec!["/"]);
+        assert_eq!(collect_suffix(s.to_string(), sep, false), vec!["/"]);
+    }
+
+    #[test]
+    fn test_collect_suffix4() {
+        let s = "";
+        let sep = "/";
+        assert_eq!(collect_suffix(s.to_string(), sep, true), vec![""]);
+        assert_eq!(collect_suffix(s.to_string(), sep, false), vec![""]);
+    }
+
+    #[test]
+    fn test_collect_suffix5() {
+        let s = "abc";
+        let sep = "/";
+        assert_eq!(collect_suffix(s.to_string(), sep, true), vec!["abc"]);
+        assert_eq!(collect_suffix(s.to_string(), sep, false), vec!["abc"]);
     }
 }
